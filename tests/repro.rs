@@ -1,25 +1,16 @@
-use std::{any::Any, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
-use async_trait::async_trait;
 use pollster::block_on;
 use switchyard::{
     threads::{single_pool_two_to_one, thread_info},
     JoinHandle, Switchyard,
 };
 
-#[async_trait]
-trait Resource: Any + Send + Sync {
-    async fn load(name: String, store: Arc<Store>) -> Result<Self, ()>
-    where
-        Self: Sized;
-}
-
 #[derive(PartialEq, Eq, Debug)]
 struct ResourceA {
     number: i32,
 }
-#[async_trait]
-impl Resource for ResourceA {
+impl ResourceA {
     async fn load(_name: String, _store: Arc<Store>) -> Result<Self, ()>
     where
         Self: Sized,
@@ -38,11 +29,11 @@ impl Store {
             tasks: Switchyard::new(1, single_pool_two_to_one(thread_info(), None), || ()).unwrap(),
         }
     }
-    fn get<T: Resource>(self: &Arc<Self>, name: String) -> JoinHandle<Arc<T>> {
+    fn get(self: &Arc<Self>, name: String) -> JoinHandle<Arc<ResourceA>> {
         let _self = self.clone();
         self.tasks.spawn(0, 0, async move {
             eprintln!("loading {}", name);
-            let resource = T::load(name.clone(), _self);
+            let resource = ResourceA::load(name.clone(), _self);
             eprintln!("awaiting {}", name);
             let resource = Arc::new(resource.await.unwrap_or_else(|error| {
                 panic!("loading resource {} failed: {:#?}", name, error);
@@ -58,9 +49,9 @@ fn repro() {
     let store = Arc::new(Store::new());
 
     let storea = store.clone();
-    let a = std::thread::spawn(move || storea.get::<ResourceA>("abv".into()));
+    let a = std::thread::spawn(move || storea.get("abv".into()));
     let storeb = store;
-    let b = std::thread::spawn(move || storeb.get::<ResourceA>("def".into()));
+    let b = std::thread::spawn(move || storeb.get("def".into()));
 
     eprintln!("A");
 
@@ -69,12 +60,9 @@ fn repro() {
 
     eprintln!("B");
 
-    let a = std::thread::spawn(move || block_on(a));
-    let b = std::thread::spawn(move || block_on(b));
+    let a = block_on(a);
+    let b = block_on(b);
+    assert_eq!(a, b);
 
     eprintln!("C");
-
-    let a = a.join().unwrap();
-    let b = b.join().unwrap();
-    assert_eq!(a, b);
 }
