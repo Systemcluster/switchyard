@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use pollster::block_on;
 use switchyard::{
@@ -11,25 +11,20 @@ struct ResourceA {
     number: i32,
 }
 impl ResourceA {
-    async fn load(_name: String, _yard: Arc<Switchyard<()>>) -> Result<Self, ()>
-    where
-        Self: Sized,
-    {
-        std::thread::sleep(Duration::from_millis(100));
-        Ok(Self { number: 1 })
+    async fn load(_name: String, _yard: Arc<Switchyard<()>>) -> Self {
+        Self { number: 1 }
     }
 }
 
 fn spawn(yard: Arc<Switchyard<()>>, name: String) -> JoinHandle<Arc<ResourceA>> {
     let _yard = yard.clone();
     yard.spawn(0, 0, async move {
-        eprintln!("loading {}", name);
         let resource = ResourceA::load(name.clone(), _yard);
+
         eprintln!("awaiting {}", name);
-        let resource = Arc::new(resource.await.unwrap_or_else(|error| {
-            panic!("loading resource {} failed: {:#?}", name, error);
-        }));
+        let resource = Arc::new(resource.await);
         eprintln!("done awaiting {}", name);
+
         resource
     })
 }
