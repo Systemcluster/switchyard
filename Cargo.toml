@@ -29,9 +29,11 @@ affinity = "0.1"
 
 [dev-dependencies]
 async-std = "1.6"
+async-trait = "0.1"
 criterion = "0.3"
 flume = "0.10"
 futures-executor = "0.3"
+pollster = "0.2"
 
 [profile.bench]
 debug = true
