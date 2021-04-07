@@ -11,7 +11,7 @@ struct ResourceA {
     number: i32,
 }
 impl ResourceA {
-    async fn load(_name: String, _store: Arc<Store>) -> Result<Self, ()>
+    async fn load(_name: String, _yard: Arc<Switchyard<()>>) -> Result<Self, ()>
     where
         Self: Sized,
     {
@@ -20,38 +20,28 @@ impl ResourceA {
     }
 }
 
-struct Store {
-    tasks: Switchyard<()>,
-}
-impl Store {
-    pub fn new() -> Self {
-        Self {
-            tasks: Switchyard::new(1, single_pool_two_to_one(thread_info(), None), || ()).unwrap(),
-        }
-    }
-    fn get(self: &Arc<Self>, name: String) -> JoinHandle<Arc<ResourceA>> {
-        let _self = self.clone();
-        self.tasks.spawn(0, 0, async move {
-            eprintln!("loading {}", name);
-            let resource = ResourceA::load(name.clone(), _self);
-            eprintln!("awaiting {}", name);
-            let resource = Arc::new(resource.await.unwrap_or_else(|error| {
-                panic!("loading resource {} failed: {:#?}", name, error);
-            }));
-            eprintln!("done awaiting {}", name);
-            resource
-        })
-    }
+fn spawn(yard: Arc<Switchyard<()>>, name: String) -> JoinHandle<Arc<ResourceA>> {
+    let _yard = yard.clone();
+    yard.spawn(0, 0, async move {
+        eprintln!("loading {}", name);
+        let resource = ResourceA::load(name.clone(), _yard);
+        eprintln!("awaiting {}", name);
+        let resource = Arc::new(resource.await.unwrap_or_else(|error| {
+            panic!("loading resource {} failed: {:#?}", name, error);
+        }));
+        eprintln!("done awaiting {}", name);
+        resource
+    })
 }
 
 #[test]
 fn repro() {
-    let store = Arc::new(Store::new());
+    let yard = Arc::new(Switchyard::new(1, single_pool_two_to_one(thread_info(), None), || ()).unwrap());
 
-    let storea = store.clone();
-    let a = std::thread::spawn(move || storea.get("abv".into()));
-    let storeb = store;
-    let b = std::thread::spawn(move || storeb.get("def".into()));
+    let yard_a = yard.clone();
+    let a = std::thread::spawn(move || spawn(yard_a, "abv".into()));
+    let yard_b = yard;
+    let b = std::thread::spawn(move || spawn(yard_b, "def".into()));
 
     eprintln!("A");
 
